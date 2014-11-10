@@ -22,9 +22,8 @@
 #include "maidsafe/common/utils.h"
 
 #include "maidsafe/passport/types.h"
-#include "maidsafe/passport/detail/passport.pb.h"
 
-namespace pb = maidsafe::passport::detail::protobuf;
+#include "maidsafe/common/serialisation.h"
 
 namespace maidsafe {
 
@@ -245,11 +244,6 @@ TEST(PublicFobTest, BEH_DoNotConstructPublicFobsFromUninitialisedStrings) {
   EXPECT_THROW(
       PublicMpid(PublicMpid::Name(uninitialised_name), (PublicMpid::serialised_type(string))),
       std::exception);
-}
-
-TEST(PublicFobTest, BEH_SerialiseUninitialisedPublicFob) {
-  pb::PublicFob proto_public_fob;
-  EXPECT_THROW(NonEmptyString(proto_public_fob.SerializeAsString()), std::exception);
 }
 
 }  // namespace test

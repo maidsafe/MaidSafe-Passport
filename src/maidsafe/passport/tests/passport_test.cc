@@ -30,9 +30,6 @@
 #include "maidsafe/common/authentication/user_credentials.h"
 
 #include "maidsafe/passport/detail/fob.h"
-#include "maidsafe/passport/detail/passport.pb.h"
-
-namespace pb = maidsafe::passport::detail::protobuf;
 
 namespace maidsafe {
 

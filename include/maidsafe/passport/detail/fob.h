@@ -28,6 +28,7 @@
 #include "maidsafe/common/crypto.h"
 #include "maidsafe/common/rsa.h"
 #include "maidsafe/common/types.h"
+#include "maidsafe/common/serialisation.h"
 
 #include "maidsafe/passport/detail/config.h"
 
@@ -37,19 +38,14 @@ namespace passport {
 
 namespace detail {
 
-namespace protobuf { class Fob; }
-
 Identity CreateFobName(const asymm::PublicKey& public_key,
                        const asymm::Signature& validation_token);
 
 Identity CreateMpidName(const NonEmptyString& chosen_name);
 
-void FobFromProtobuf(const protobuf::Fob& proto_fob, DataTagValue enum_value, asymm::Keys& keys,
-                     asymm::Signature& validation_token, Identity& name);
-
-void FobToProtobuf(DataTagValue enum_value, const asymm::Keys& keys,
-                   const asymm::Signature& validation_token, const std::string& name,
-                   protobuf::Fob* proto_fob);
+void ValidateFobDeserialisation(DataTagValue enum_value, asymm::Keys& keys,
+                                asymm::Signature& validation_token, Identity& name,
+                                std::uint32_t type);
 
 template <typename TagType>
 struct is_self_signed {
@@ -93,20 +89,47 @@ class Fob<TagType, typename std::enable_if<is_self_signed<TagType>::type::value>
     return *this;
   }
 
-  explicit Fob(const protobuf::Fob& proto_fob) : keys_(), validation_token_(), name_() {
-    Identity name;
-    FobFromProtobuf(proto_fob, Tag::kValue, keys_, validation_token_, name);
-    name_ = Name{ name };
+  explicit Fob(const std::string& binary_stream) : keys_(), validation_token_(), name_() {
+    try {maidsafe::ConvertFromString(binary_stream, *this);}
+    catch(...) {BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));}
   }
 
-  void ToProtobuf(protobuf::Fob* proto_fob) const {
-    FobToProtobuf(Tag::kValue, keys_, validation_token_, name_->string(), proto_fob);
+  std::string ToCereal() const {
+    return maidsafe::ConvertToString(*this);
   }
 
   Name name() const { return name_; }
   asymm::Signature validation_token() const { return validation_token_; }
   asymm::PrivateKey private_key() const { return keys_.private_key; }
   asymm::PublicKey public_key() const { return keys_.public_key; }
+
+  template<typename Archive>
+  Archive& load(Archive& ref_archive) {
+    asymm::EncodedPrivateKey temp_private_key {};
+    asymm::EncodedPublicKey temp_public_key {};
+    std::uint32_t temp_type {};
+    Identity name;
+
+    auto& archive = ref_archive(temp_type, name, temp_private_key,
+                                temp_public_key, validation_token_);
+
+    keys_.private_key = asymm::DecodeKey(std::move(temp_private_key));
+    keys_.public_key = asymm::DecodeKey(std::move(temp_public_key));
+
+    ValidateFobDeserialisation(Tag::kValue, keys_, validation_token_, name, temp_type);
+    name_ = Name {std::move(name)};
+
+    return archive;
+  }
+
+  template<typename Archive>
+  Archive& save(Archive& ref_archive) const {
+    return ref_archive(static_cast<uint32_t>(Tag::kValue),
+                       name_->string(),
+                       asymm::EncodeKey(keys_.private_key).string(),
+                       asymm::EncodeKey(keys_.public_key).string(),
+                       validation_token_);
+  }
 
  private:
   asymm::Keys keys_;
@@ -124,6 +147,7 @@ class Fob<TagType, typename std::enable_if<!is_self_signed<TagType>::type::value
   typedef Fob<typename SignerFob<TagType>::Tag> Signer;
   typedef TagType Tag;
 
+  Fob() = delete;
   // This constructor is only available to this specialisation (i.e. non-self-signed fob)
   explicit Fob(const Signer& signing_fob,
                typename std::enable_if<!std::is_same<Fob<Tag>, Signer>::value>::type* = 0)
@@ -150,14 +174,13 @@ class Fob<TagType, typename std::enable_if<!is_self_signed<TagType>::type::value
     return *this;
   }
 
-  explicit Fob(const protobuf::Fob& proto_fob) : keys_(), validation_token_(), name_() {
-    Identity name;
-    FobFromProtobuf(proto_fob, Tag::kValue, keys_, validation_token_, name);
-    name_ = Name{ name };
+  explicit Fob(const std::string& binary_stream) : keys_(), validation_token_(), name_() {
+    try {maidsafe::ConvertFromString(binary_stream, *this);}
+    catch(...) {BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));}
   }
 
-  void ToProtobuf(protobuf::Fob* proto_fob) const {
-    FobToProtobuf(Tag::kValue, keys_, validation_token_, name_->string(), proto_fob);
+  std::string ToCereal() const {
+    return maidsafe::ConvertToString(*this);
   }
 
   Name name() const { return name_; }
@@ -165,8 +188,35 @@ class Fob<TagType, typename std::enable_if<!is_self_signed<TagType>::type::value
   asymm::PrivateKey private_key() const { return keys_.private_key; }
   asymm::PublicKey public_key() const { return keys_.public_key; }
 
+  template<typename Archive>
+  Archive& load(Archive& ref_archive) {
+    asymm::EncodedPrivateKey temp_private_key {};
+    asymm::EncodedPublicKey temp_public_key {};
+    std::uint32_t temp_type {};
+    Identity name;
+
+    auto& archive = ref_archive(temp_type, name, temp_private_key,
+                                temp_public_key, validation_token_);
+
+    keys_.private_key = asymm::DecodeKey(std::move(temp_private_key));
+    keys_.public_key = asymm::DecodeKey(std::move(temp_public_key));
+
+    ValidateFobDeserialisation(Tag::kValue, keys_, validation_token_, name, temp_type);
+    name_ = Name {std::move(name)};
+
+    return archive;
+  }
+
+  template<typename Archive>
+  Archive& save(Archive& ref_archive) const {
+    return ref_archive(static_cast<uint32_t>(Tag::kValue),
+                       name_->string(),
+                       asymm::EncodeKey(keys_.private_key).string(),
+                       asymm::EncodeKey(keys_.public_key).string(),
+                       validation_token_);
+  }
+
  private:
-  Fob() = delete;
   asymm::Keys keys_;
   asymm::Signature validation_token_;
   Name name_;
@@ -182,6 +232,7 @@ class Fob<MpidTag> {
   typedef Fob<typename SignerFob<MpidTag>::Tag> Signer;
   typedef MpidTag Tag;
 
+  Fob() = delete;
   // This constructor is only available to this specialisation (i.e. Mpid)
   Fob(const NonEmptyString& chosen_name, const Signer& signing_fob);
 
@@ -195,16 +246,43 @@ class Fob<MpidTag> {
   }
   Fob& operator=(Fob other);
 
-  explicit Fob(const protobuf::Fob& proto_fob);
-  void ToProtobuf(protobuf::Fob* proto_fob) const;
+  explicit Fob(const std::string& binary_stream);
+  std::string ToCereal() const;
 
   Name name() const { return name_; }
   asymm::Signature validation_token() const { return validation_token_; }
   asymm::PrivateKey private_key() const { return keys_.private_key; }
   asymm::PublicKey public_key() const { return keys_.public_key; }
 
+  template<typename Archive>
+  Archive& load(Archive& ref_archive) {
+    asymm::EncodedPrivateKey temp_private_key {};
+    asymm::EncodedPublicKey temp_public_key {};
+    std::uint32_t temp_type {};
+    Identity name;
+
+    auto& archive = ref_archive(temp_type, name, temp_private_key,
+                                temp_public_key, validation_token_);
+
+    keys_.private_key = asymm::DecodeKey(std::move(temp_private_key));
+    keys_.public_key = asymm::DecodeKey(std::move(temp_public_key));
+
+    ValidateFobDeserialisation(Tag::kValue, keys_, validation_token_, name, temp_type);
+    name_ = Name {std::move(name)};
+
+    return archive;
+  }
+
+  template<typename Archive>
+  Archive& save(Archive& ref_archive) const {
+    return ref_archive(static_cast<uint32_t>(Tag::kValue),
+                       name_->string(),
+                       asymm::EncodeKey(keys_.private_key).string(),
+                       asymm::EncodeKey(keys_.public_key).string(),
+                       validation_token_);
+  }
+
  private:
-  Fob();
   asymm::Keys keys_;
   asymm::Signature validation_token_;
   Name name_;

@@ -19,6 +19,7 @@
 #ifndef MAIDSAFE_PASSPORT_DETAIL_PUBLIC_FOB_H_
 #define MAIDSAFE_PASSPORT_DETAIL_PUBLIC_FOB_H_
 
+#include <string>
 #include <type_traits>
 
 #include "maidsafe/common/rsa.h"
@@ -27,17 +28,13 @@
 #include "maidsafe/passport/detail/config.h"
 #include "maidsafe/passport/detail/fob.h"
 
+#include "maidsafe/common/serialisation.h"
+
 namespace maidsafe {
 
 namespace passport {
 
 namespace detail {
-
-void PublicFobFromProtobuf(const NonEmptyString& serialised_public_fob, DataTagValue enum_value,
-                           asymm::PublicKey& public_key, asymm::Signature& validation_token);
-
-NonEmptyString PublicFobToProtobuf(DataTagValue enum_value, const asymm::PublicKey& public_key,
-                                   const asymm::Signature& validation_token);
 
 template <typename TagType>
 class PublicFob {
@@ -46,6 +43,8 @@ class PublicFob {
   typedef TagType Tag;
   typedef Fob<typename SignerFob<TagType>::Tag> Signer;
   typedef TaggedValue<NonEmptyString, Tag> serialised_type;
+
+  PublicFob() = delete;
 
   PublicFob(const PublicFob& other)
       : name_(other.name_),
@@ -78,19 +77,41 @@ class PublicFob {
       : name_(std::move(name)), public_key_(), validation_token_() {
     if (!name_->IsInitialised())
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
-    PublicFobFromProtobuf(serialised_public_fob.data, Tag::kValue, public_key_, validation_token_);
+
+    try { maidsafe::ConvertFromString(serialised_public_fob.data.string(), *this); }
+    catch(...) { BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error)); }
   }
 
   serialised_type Serialise() const {
-    return serialised_type(PublicFobToProtobuf(Tag::kValue, public_key_, validation_token_));
+    return serialised_type(NonEmptyString {maidsafe::ConvertToString(*this)});
   }
 
   Name name() const { return name_; }
   asymm::PublicKey public_key() const { return public_key_; }
   asymm::Signature validation_token() const { return validation_token_; }
 
+  template<typename Archive>
+  Archive& load(Archive& ref_archive) {
+    std::uint32_t temp_tag;
+    std::string temp_raw_public_key;
+    auto& archive = ref_archive(temp_tag, temp_raw_public_key, validation_token_);
+
+    if (temp_tag != static_cast<std::uint32_t>(Tag::kValue)) {
+      BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
+    }
+
+    public_key_ = asymm::DecodeKey(asymm::EncodedPublicKey {std::move(temp_raw_public_key)});
+    return archive;
+  }
+
+  template<typename Archive>
+  Archive& save(Archive& ref_archive) const {
+    return ref_archive(static_cast<std::uint32_t>(Tag::kValue),
+                       asymm::EncodeKey(public_key_).string(),
+                       validation_token_);
+  }
+
  private:
-  PublicFob();
   Name name_;
   asymm::PublicKey public_key_;
   asymm::Signature validation_token_;

@@ -23,7 +23,8 @@
 #include "maidsafe/common/authentication/user_credentials.h"
 #include "maidsafe/common/authentication/user_credential_utils.h"
 
-#include "maidsafe/passport/detail/passport.pb.h"
+#include "maidsafe/common/serialisation.h"
+#include "maidsafe/passport/detail/passport_cereal.h"
 
 namespace maidsafe {
 
@@ -142,55 +143,61 @@ Passport::Passport(const crypto::CipherText& encrypted_passport,
 }
 
 void Passport::Parse(const NonEmptyString& serialised_passport) {
-  detail::protobuf::Passport proto_passport;
-  if (!proto_passport.ParseFromString(serialised_passport.string())) {
+  detail::PassportCereal cereal_passport;
+  try { maidsafe::ConvertFromString(serialised_passport.string(), cereal_passport); }
+  catch(...) {
     LOG(kError) << "Failed to parse passport.";
     BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
   }
+
   std::lock_guard<std::mutex> lock{ mutex_ };
 
   maid_and_signer_ = maidsafe::make_unique<MaidAndSigner>(std::make_pair(
-    Maid{ proto_passport.maid_and_signer().key() },
-    Anmaid{ proto_passport.maid_and_signer().signer() }));
+    Maid{ cereal_passport.maid_and_signer_.key_ },
+    Anmaid{ cereal_passport.maid_and_signer_.signer_ }));
 
-  for (int i(0); i != proto_passport.pmids_and_signers_size(); ++i) {
+  for (std::size_t i(0); i != cereal_passport.pmids_and_signers_.size(); ++i) {
     pmids_and_signers_.emplace_back(std::make_pair(
-      Pmid{ proto_passport.pmids_and_signers(i).key() },
-      Anpmid{ proto_passport.pmids_and_signers(i).signer() }));
+      Pmid{ cereal_passport.pmids_and_signers_[i].key_ },
+      Anpmid{ cereal_passport.pmids_and_signers_[i].signer_ }));
   }
 
-  for (int j(0); j != proto_passport.mpids_and_signers_size(); ++j) {
+  for (std::size_t j(0); j != cereal_passport.mpids_and_signers_.size(); ++j) {
     mpids_and_signers_.emplace_back(std::make_pair(
-      Mpid{ proto_passport.mpids_and_signers(j).key() },
-      Anmpid{ proto_passport.mpids_and_signers(j).signer() }));
+      Mpid{ cereal_passport.mpids_and_signers_[j].key_ },
+      Anmpid{ cereal_passport.mpids_and_signers_[j].signer_ }));
   }
 }
 
 NonEmptyString Passport::Serialise() const {
-  detail::protobuf::Passport proto_passport;
+  detail::PassportCereal cereal_passport;
   std::lock_guard<std::mutex> lock{ mutex_ };
   if (!maid_and_signer_) {
     LOG(kError) << "Passport must contain a Maid in order to be serialised.";
     BOOST_THROW_EXCEPTION(MakeError(CommonErrors::serialisation_error));
   }
 
-  detail::protobuf::KeyAndSigner* proto_key_and_signer{ proto_passport.mutable_maid_and_signer() };
-  maid_and_signer_->first.ToProtobuf(proto_key_and_signer->mutable_key());
-  maid_and_signer_->second.ToProtobuf(proto_key_and_signer->mutable_signer());
+  detail::KeyAndSignerCereal* cereal_key_and_signer{ &cereal_passport.maid_and_signer_ };
+  cereal_key_and_signer->key_ = maid_and_signer_->first.ToCereal();
+  cereal_key_and_signer->signer_ = maid_and_signer_->second.ToCereal();
 
   for (const auto& pmid_and_signer : pmids_and_signers_) {
-    proto_key_and_signer = proto_passport.add_pmids_and_signers();
-    pmid_and_signer.first.ToProtobuf(proto_key_and_signer->mutable_key());
-    pmid_and_signer.second.ToProtobuf(proto_key_and_signer->mutable_signer());
+    cereal_key_and_signer = ((cereal_passport.pmids_and_signers_.emplace_back(),
+                             &cereal_passport.pmids_and_signers_[
+                             cereal_passport.pmids_and_signers_.size() - 1]));
+    cereal_key_and_signer->key_ = pmid_and_signer.first.ToCereal();
+    cereal_key_and_signer->signer_ = pmid_and_signer.second.ToCereal();
   }
 
   for (const auto& mpid_and_signer : mpids_and_signers_) {
-    proto_key_and_signer = proto_passport.add_mpids_and_signers();
-    mpid_and_signer.first.ToProtobuf(proto_key_and_signer->mutable_key());
-    mpid_and_signer.second.ToProtobuf(proto_key_and_signer->mutable_signer());
+    cereal_key_and_signer = ((cereal_passport.mpids_and_signers_.emplace_back(),
+                              &cereal_passport.mpids_and_signers_[
+                              cereal_passport.mpids_and_signers_.size() - 1]));
+    cereal_key_and_signer->key_ = mpid_and_signer.first.ToCereal();
+    cereal_key_and_signer->signer_ = mpid_and_signer.second.ToCereal();
   }
 
-  return NonEmptyString{ proto_passport.SerializeAsString() };
+  return NonEmptyString{ maidsafe::ConvertToString(cereal_passport) };
 }
 
 crypto::CipherText Passport::Encrypt(
