@@ -44,7 +44,7 @@ class PublicFob {
   typedef Fob<typename SignerFob<TagType>::Tag> Signer;
   typedef TaggedValue<NonEmptyString, Tag> serialised_type;
 
-  PublicFob() = delete;
+  PublicFob() = default;
 
   PublicFob(const PublicFob& other)
       : name_(other.name_),
