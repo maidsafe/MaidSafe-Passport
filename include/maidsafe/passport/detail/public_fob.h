@@ -19,16 +19,26 @@
 #ifndef MAIDSAFE_PASSPORT_DETAIL_PUBLIC_FOB_H_
 #define MAIDSAFE_PASSPORT_DETAIL_PUBLIC_FOB_H_
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <type_traits>
+#include <vector>
+
+#include "boost/optional/optional.hpp"
+#include "cereal/access.hpp"
+#include "cereal/types/base_class.hpp"
 
 #include "maidsafe/common/rsa.h"
 #include "maidsafe/common/types.h"
+#include "maidsafe/common/data_types/data.h"
+// We must include all archives which this polymorphic type will be used with *before* the
+// CEREAL_REGISTER_TYPE call below.
+#include "maidsafe/common/serialisation/binary_archive.h"
+#include "maidsafe/common/serialisation/serialisation.h"
 
 #include "maidsafe/passport/detail/config.h"
 #include "maidsafe/passport/detail/fob.h"
-
-#include "maidsafe/common/serialisation/serialisation.h"
 
 namespace maidsafe {
 
@@ -37,60 +47,36 @@ namespace passport {
 namespace detail {
 
 template <typename TagType>
-class PublicFob {
+class PublicFob : public Data {
  public:
-  using Name = maidsafe::detail::Name<PublicFob>;
   using Tag = TagType;
   using Signer = Fob<typename SignerFob<TagType>::Tag>;
-  using serialised_type = TaggedValue<NonEmptyString, Tag>;
   using ValidationToken = typename Fob<Tag>::ValidationToken;
+
+  explicit PublicFob(const Fob<Tag>& fob)
+      : Data(fob.name()),
+        public_key_(fob.public_key()),
+        validation_token_(fob.validation_token()) {}
 
   PublicFob() = default;
 
   PublicFob(const PublicFob& other) = default;
 
   PublicFob(PublicFob&& other)
-      : name_(std::move(other.name_)),
+      : Data(std::move(other)),
         public_key_(std::move(other.public_key_)),
         validation_token_(std::move(other.validation_token_)) {}
 
-  friend void swap(PublicFob& lhs, PublicFob& rhs) {
-    using std::swap;
-    swap(lhs.name_, rhs.name_);
-    swap(lhs.public_key_, rhs.public_key_);
-    swap(lhs.validation_token_, rhs.validation_token_);
-  }
+  PublicFob& operator=(const PublicFob&) = default;
 
-  PublicFob& operator=(PublicFob other) {
-    swap(*this, other);
+  PublicFob& operator=(PublicFob&& other) {
+    Data::operator=(std::move(other));
+    public_key_ = std::move(other.public_key_);
+    validation_token_ = std::move(other.validation_token_);
     return *this;
   }
 
-  explicit PublicFob(const Fob<Tag>& fob)
-      : name_(fob.name()),
-        public_key_(fob.public_key()),
-        validation_token_(fob.validation_token()) {}
-
-  PublicFob(Name name, const serialised_type& serialised_public_fob)
-      : name_(std::move(name)), public_key_(), validation_token_() {
-    try {
-      maidsafe::ConvertFromString(serialised_public_fob.data.string(), *this);
-    } catch (...) {
-      BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
-    }
-  }
-
-  serialised_type Serialise() const {
-    return serialised_type(NonEmptyString{maidsafe::ConvertToString(*this)});
-  }
-
-  bool IsInitialised() const { return name_->IsInitialised(); }
-
-  Name name() const {
-    if (!IsInitialised())
-      BOOST_THROW_EXCEPTION(MakeError(CommonErrors::uninitialised));
-    return name_;
-  }
+  virtual ~PublicFob() final = default;
 
   asymm::PublicKey public_key() const {
     if (!IsInitialised())
@@ -105,35 +91,43 @@ class PublicFob {
   }
 
   template <typename Archive>
-  Archive& load(Archive& archive) {
-    std::string temp_raw_public_key;
-    archive(temp_raw_public_key, validation_token_);
-    public_key_ = asymm::DecodeKey(asymm::EncodedPublicKey(temp_raw_public_key));
-    ValidateToken(temp_raw_public_key);
-    return archive;
-  }
-
-  template <typename Archive>
   Archive& save(Archive& archive) const {
-    if (!IsInitialised())
-      BOOST_THROW_EXCEPTION(MakeError(CommonErrors::uninitialised));
+    archive(cereal::base_class<Data>(this));  // Do this first to check IsInitialised() == true.
     return archive(asymm::EncodeKey(public_key_).string(), validation_token_);
   }
 
+  template <typename Archive>
+  Archive& load(Archive& archive) {
+    SerialisedData temp_raw_public_key;
+    try {
+      archive(cereal::base_class<Data>(this), temp_raw_public_key, validation_token_);
+      public_key_ = asymm::DecodeKey(asymm::EncodedPublicKey(temp_raw_public_key));
+    } catch (const std::exception&) {
+      BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
+    }
+    ValidateToken();
+    return archive;
+  }
+
  private:
+  virtual std::uint32_t ThisTypeId() const final { return TagType::type_id; }
+
   // For self-signed keys
   template <typename T = TagType>
   void ValidateToken(
-      const std::string& encoded_public_key,
       typename std::enable_if<std::is_same<Fob<T>, Signer>::value>::type* = 0) const {
-    // Check the validation token is valid
-    if (!asymm::CheckSignature(asymm::PlainText(encoded_public_key + ConvertToString(Tag::kValue)),
-                               validation_token_, public_key_)) {
-      BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
-    }
-    // Check the name is the hash of the public key + validation token
-    if (crypto::Hash<crypto::SHA512>(encoded_public_key + validation_token_.string()) !=
-        name_.value) {
+    try {
+      // Check the validation token is valid
+      if (!asymm::CheckSignature(asymm::PlainText(Serialise(public_key_, Tag::type_id)),
+                                 validation_token_, public_key_)) {
+        BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
+      }
+      // Check the name is the hash of the public key + validation token
+      if (crypto::Hash<crypto::SHA512>(Serialise(public_key_, validation_token_)) != name_) {
+        BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
+      }
+    } catch (const std::exception& e) {
+      LOG(kWarning) << "Error validating public key token: " << boost::diagnostic_information(e);
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
     }
   }
@@ -141,21 +135,27 @@ class PublicFob {
   // For non-self-signed keys
   template <typename T = TagType>
   void ValidateToken(
-      const std::string& encoded_public_key,
       typename std::enable_if<!std::is_same<Fob<T>, Signer>::value>::type* = 0) const {
-    // Check the validation token is valid
-    if (!asymm::CheckSignature(asymm::PlainText(validation_token_.signature_of_public_key.string() +
-                                                encoded_public_key + ConvertToString(Tag::kValue)),
-                               validation_token_.self_signature, public_key_)) {
+    try {
+      // Check the validation token is valid
+      SerialisedData self(validation_token_.signature_of_public_key.string());
+      SerialisedData serialised_public_key(Serialise(public_key_));
+      self.insert(self.end(), serialised_public_key.begin(), serialised_public_key.end());
+      SerialisedData type_id(Serialise(Tag::type_id));
+      self.insert(self.end(), type_id.begin(), type_id.end());
+      if (!asymm::CheckSignature(asymm::PlainText(self), validation_token_.self_signature,
+                                 public_key_)) {
+        BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
+      }
+      // Check the name is the hash of the public key + validation token
+      if (crypto::Hash<crypto::SHA512>(Serialise(public_key_, validation_token_)) != name_)
+        BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
+    } catch (const std::exception& e) {
+      LOG(kWarning) << "Error validating public key token: " << boost::diagnostic_information(e);
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
     }
-    // Check the name is the hash of the public key + validation token
-    if (crypto::Hash<crypto::SHA512>(encoded_public_key + ConvertToString(validation_token_)) !=
-        name_.value)
-      BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
   }
 
-  Name name_;
   asymm::PublicKey public_key_;
   ValidationToken validation_token_;
 };

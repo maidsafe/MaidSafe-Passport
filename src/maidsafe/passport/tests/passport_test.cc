@@ -43,42 +43,42 @@ TEST(PassportTest, BEH_FreeFunctions) {
   // CreateMpidAndSigner();
   PmidAndSigner pmid_and_signer{CreatePmidAndSigner()};
 
-  crypto::AES256Key symm_key{RandomString(crypto::AES256_KeySize - 1) + "a"};
-  crypto::AES256InitialisationVector symm_iv{RandomString(crypto::AES256_IVSize)};
+  crypto::AES256KeyAndIV symm_key_and_iv{RandomString(crypto::AES256_KeySize - 1) + "a" +
+                                         RandomString(crypto::AES256_IVSize)};
 
   crypto::CipherText encrypted_maid{
-      maidsafe::passport::EncryptMaid(maid_and_signer.first, symm_key, symm_iv)};
+      maidsafe::passport::EncryptMaid(maid_and_signer.first, symm_key_and_iv)};
   crypto::CipherText encrypted_anpmid{
-      maidsafe::passport::EncryptAnpmid(pmid_and_signer.second, symm_key, symm_iv)};
+      maidsafe::passport::EncryptAnpmid(pmid_and_signer.second, symm_key_and_iv)};
   crypto::CipherText encrypted_pmid{
-      maidsafe::passport::EncryptPmid(pmid_and_signer.first, symm_key, symm_iv)};
+      maidsafe::passport::EncryptPmid(pmid_and_signer.first, symm_key_and_iv)};
 
-  Maid maid{maidsafe::passport::DecryptMaid(encrypted_maid, symm_key, symm_iv)};
+  Maid maid{maidsafe::passport::DecryptMaid(encrypted_maid, symm_key_and_iv)};
   EXPECT_TRUE(Equal(maid_and_signer.first, maid));
-  Anpmid anpmid{maidsafe::passport::DecryptAnpmid(encrypted_anpmid, symm_key, symm_iv)};
+  Anpmid anpmid{maidsafe::passport::DecryptAnpmid(encrypted_anpmid, symm_key_and_iv)};
   EXPECT_TRUE(Equal(pmid_and_signer.second, anpmid));
-  Pmid pmid{maidsafe::passport::DecryptPmid(encrypted_pmid, symm_key, symm_iv)};
+  Pmid pmid{maidsafe::passport::DecryptPmid(encrypted_pmid, symm_key_and_iv)};
   EXPECT_TRUE(Equal(pmid_and_signer.first, pmid));
-  EXPECT_THROW(maidsafe::passport::DecryptMaid(encrypted_anpmid, symm_key, symm_iv),
-               maidsafe_error);
-  EXPECT_THROW(maidsafe::passport::DecryptAnpmid(encrypted_pmid, symm_key, symm_iv),
-               maidsafe_error);
-  EXPECT_THROW(maidsafe::passport::DecryptPmid(encrypted_maid, symm_key, symm_iv), maidsafe_error);
+  EXPECT_THROW(maidsafe::passport::DecryptMaid(encrypted_anpmid, symm_key_and_iv), maidsafe_error);
+  EXPECT_THROW(maidsafe::passport::DecryptAnpmid(encrypted_pmid, symm_key_and_iv), maidsafe_error);
+  EXPECT_THROW(maidsafe::passport::DecryptPmid(encrypted_maid, symm_key_and_iv), maidsafe_error);
 
-  symm_key = crypto::AES256Key{RandomString(crypto::AES256_KeySize - 1) + "b"};
+  auto symm_key_and_iv_bytes(symm_key_and_iv.string());
+  ++symm_key_and_iv_bytes[crypto::AES256_KeySize - 1];
+  symm_key_and_iv = crypto::AES256KeyAndIV{symm_key_and_iv_bytes};
   crypto::CipherText encrypted_maid1{
-      maidsafe::passport::EncryptMaid(maid_and_signer.first, symm_key, symm_iv)};
+      maidsafe::passport::EncryptMaid(maid_and_signer.first, symm_key_and_iv)};
   crypto::CipherText encrypted_anpmid1{
-      maidsafe::passport::EncryptAnpmid(pmid_and_signer.second, symm_key, symm_iv)};
+      maidsafe::passport::EncryptAnpmid(pmid_and_signer.second, symm_key_and_iv)};
   crypto::CipherText encrypted_pmid1{
-      maidsafe::passport::EncryptPmid(pmid_and_signer.first, symm_key, symm_iv)};
+      maidsafe::passport::EncryptPmid(pmid_and_signer.first, symm_key_and_iv)};
   EXPECT_TRUE(encrypted_maid != encrypted_maid1);
   EXPECT_TRUE(encrypted_anpmid != encrypted_anpmid1);
   EXPECT_TRUE(encrypted_pmid != encrypted_pmid1);
-  EXPECT_THROW(maidsafe::passport::DecryptMaid(encrypted_maid, symm_key, symm_iv), maidsafe_error);
-  EXPECT_THROW(maidsafe::passport::DecryptAnpmid(encrypted_anpmid, symm_key, symm_iv),
+  EXPECT_THROW(maidsafe::passport::DecryptMaid(encrypted_maid, symm_key_and_iv), maidsafe_error);
+  EXPECT_THROW(maidsafe::passport::DecryptAnpmid(encrypted_anpmid, symm_key_and_iv),
                maidsafe_error);
-  EXPECT_THROW(maidsafe::passport::DecryptPmid(encrypted_pmid, symm_key, symm_iv), maidsafe_error);
+  EXPECT_THROW(maidsafe::passport::DecryptPmid(encrypted_pmid, symm_key_and_iv), maidsafe_error);
 }
 
 authentication::UserCredentials CreateUserCredentials() {

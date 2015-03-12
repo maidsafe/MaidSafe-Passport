@@ -51,7 +51,6 @@ asymm::PlainText GetRandomString();
 template <typename TagType>
 class Fob<TagType, typename std::enable_if<is_self_signed<TagType>::type::value>::type> {
  public:
-  using Name = maidsafe::detail::Name<Fob>;
   using Signer = Fob<typename SignerFob<TagType>::Tag>;
   using Tag = TagType;
   using ValidationToken = asymm::Signature;
@@ -85,44 +84,40 @@ class Fob<TagType, typename std::enable_if<is_self_signed<TagType>::type::value>
     return *this;
   }
 
-  Fob(const crypto::CipherText& encrypted_fob, const crypto::AES256Key& symm_key,
-      const crypto::AES256InitialisationVector& symm_iv)
+  Fob(const crypto::CipherText& encrypted_fob, const crypto::AES256KeyAndIV& symm_key_and_iv)
       : keys_(), validation_token_(), name_() {
     try {
-      std::string serialised_fob(crypto::SymmDecrypt(encrypted_fob, symm_key, symm_iv).string());
-      maidsafe::ConvertFromString(serialised_fob, keys_, validation_token_, name_);
+      SerialisedData serialised_fob(crypto::SymmDecrypt(encrypted_fob, symm_key_and_iv).string());
+      Parse(serialised_fob, keys_, validation_token_, name_);
     } catch (const std::exception&) {
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
     }
     ValidateToken();
   }
 
-  crypto::CipherText Encrypt(const crypto::AES256Key& symm_key,
-                             const crypto::AES256InitialisationVector& symm_iv) const {
-    crypto::PlainText serialised_fob(ConvertToString(keys_, validation_token_, name_));
-    return crypto::SymmEncrypt(serialised_fob, symm_key, symm_iv);
+  crypto::CipherText Encrypt(const crypto::AES256KeyAndIV& symm_key_and_iv) const {
+    crypto::PlainText serialised_fob(Serialise(keys_, validation_token_, name_));
+    return crypto::SymmEncrypt(serialised_fob, symm_key_and_iv);
   }
 
-  Name name() const { return name_; }
+  Identity name() const { return name_; }
   ValidationToken validation_token() const { return validation_token_; }
   asymm::PrivateKey private_key() const { return keys_.private_key; }
   asymm::PublicKey public_key() const { return keys_.public_key; }
 
  private:
   Identity CreateName() const {
-    return crypto::Hash<crypto::SHA512>(asymm::EncodeKey(keys_.public_key) + validation_token_);
+    return crypto::Hash<crypto::SHA512>(Serialise(keys_.public_key, validation_token_));
   }
 
   ValidationToken CreateValidationToken() const {
-    return asymm::Sign(asymm::PlainText(asymm::EncodeKey(keys_.public_key).string() +
-                                        ConvertToString(Tag::kValue)),
+    return asymm::Sign(asymm::PlainText(Serialise(keys_.public_key, Tag::type_id)),
                        keys_.private_key);
   }
 
   void ValidateToken() const {
     // Check the validation token is valid
-    if (!asymm::CheckSignature(asymm::PlainText(asymm::EncodeKey(keys_.public_key).string() +
-                                                ConvertToString(Tag::kValue)),
+    if (!asymm::CheckSignature(asymm::PlainText(Serialise(keys_.public_key, Tag::type_id)),
                                validation_token_, keys_.public_key)) {
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
     }
@@ -131,13 +126,13 @@ class Fob<TagType, typename std::enable_if<is_self_signed<TagType>::type::value>
     if (asymm::Decrypt(asymm::Encrypt(plain, keys_.public_key), keys_.private_key) != plain)
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
     // Check the name is the hash of the public key + validation token
-    if (CreateName() != name_.value)
+    if (CreateName() != name_)
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
   }
 
   asymm::Keys keys_;
   ValidationToken validation_token_;
-  Name name_;
+  Identity name_;
 };
 
 
@@ -146,7 +141,6 @@ class Fob<TagType, typename std::enable_if<is_self_signed<TagType>::type::value>
 template <typename TagType>
 class Fob<TagType, typename std::enable_if<!is_self_signed<TagType>::type::value>::type> {
  public:
-  using Name = maidsafe::detail::Name<Fob>;
   using Signer = Fob<typename SignerFob<TagType>::Tag>;
   using Tag = TagType;
 
@@ -217,53 +211,55 @@ class Fob<TagType, typename std::enable_if<!is_self_signed<TagType>::type::value
     return *this;
   }
 
-  Fob(const crypto::CipherText& encrypted_fob, const crypto::AES256Key& symm_key,
-      const crypto::AES256InitialisationVector& symm_iv)
+  Fob(const crypto::CipherText& encrypted_fob, const crypto::AES256KeyAndIV& symm_key_and_iv)
       : keys_(), validation_token_(), name_() {
     try {
-      std::string serialised_fob(crypto::SymmDecrypt(encrypted_fob, symm_key, symm_iv).string());
-      maidsafe::ConvertFromString(serialised_fob, keys_, validation_token_, name_);
+      SerialisedData serialised_fob(crypto::SymmDecrypt(encrypted_fob, symm_key_and_iv).string());
+      Parse(serialised_fob, keys_, validation_token_, name_);
     } catch (const std::exception&) {
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
     }
     ValidateToken();
   }
 
-  crypto::CipherText Encrypt(const crypto::AES256Key& symm_key,
-                             const crypto::AES256InitialisationVector& symm_iv) const {
-    crypto::PlainText serialised_fob(ConvertToString(keys_, validation_token_, name_));
-    return crypto::SymmEncrypt(serialised_fob, symm_key, symm_iv);
+  crypto::CipherText Encrypt(const crypto::AES256KeyAndIV& symm_key_and_iv) const {
+    crypto::PlainText serialised_fob(Serialise(keys_, validation_token_, name_));
+    return crypto::SymmEncrypt(serialised_fob, symm_key_and_iv);
   }
 
-  Name name() const { return name_; }
+  Identity name() const { return name_; }
   ValidationToken validation_token() const { return validation_token_; }
   asymm::PrivateKey private_key() const { return keys_.private_key; }
   asymm::PublicKey public_key() const { return keys_.public_key; }
 
  private:
   Identity CreateName() const {
-    return crypto::Hash<crypto::SHA512>(asymm::EncodeKey(keys_.public_key).string() +
-                                        ConvertToString(validation_token_));
+    return crypto::Hash<crypto::SHA512>(Serialise(keys_.public_key, validation_token_));
   }
 
   ValidationToken CreateValidationToken(const asymm::PrivateKey& signing_key) const {
     ValidationToken token;
-    asymm::EncodedPublicKey serialised_public_key(asymm::EncodeKey(keys_.public_key));
+    SerialisedData serialised_public_key(Serialise(keys_.public_key));
     token.signature_of_public_key =
         asymm::Sign(asymm::PlainText(serialised_public_key), signing_key);
-    token.self_signature =
-        asymm::Sign(asymm::PlainText(token.signature_of_public_key.string() +
-                                     serialised_public_key.string() + ConvertToString(Tag::kValue)),
-                    keys_.private_key);
+
+    SerialisedData self(token.signature_of_public_key.string());
+    self.insert(self.end(), serialised_public_key.begin(), serialised_public_key.end());
+    SerialisedData type_id(Serialise(Tag::type_id));
+    self.insert(self.end(), type_id.begin(), type_id.end());
+    token.self_signature = asymm::Sign(asymm::PlainText(self), keys_.private_key);
     return token;
   }
 
   void ValidateToken() const {
     // Check the validation token is valid
-    if (!asymm::CheckSignature(asymm::PlainText(validation_token_.signature_of_public_key.string() +
-                                                asymm::EncodeKey(keys_.public_key).string() +
-                                                ConvertToString(Tag::kValue)),
-                               validation_token_.self_signature, keys_.public_key)) {
+    SerialisedData self(validation_token_.signature_of_public_key.string());
+    SerialisedData serialised_public_key(Serialise(keys_.public_key));
+    self.insert(self.end(), serialised_public_key.begin(), serialised_public_key.end());
+    SerialisedData type_id(Serialise(Tag::type_id));
+    self.insert(self.end(), type_id.begin(), type_id.end());
+    if (!asymm::CheckSignature(asymm::PlainText(self), validation_token_.self_signature,
+                               keys_.public_key)) {
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
     }
     // Check the private key hasn't been replaced
@@ -271,32 +267,29 @@ class Fob<TagType, typename std::enable_if<!is_self_signed<TagType>::type::value
     if (asymm::Decrypt(asymm::Encrypt(plain, keys_.public_key), keys_.private_key) != plain)
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
     // Check the name is the hash of the public key + validation token
-    if (CreateName() != name_.value)
+    if (CreateName() != name_)
       BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
   }
 
   asymm::Keys keys_;
   ValidationToken validation_token_;
-  Name name_;
+  Identity name_;
 };
 
 
 // ========== General ==============================================================================
-crypto::CipherText EncryptMaid(const Fob<MaidTag>& maid, const crypto::AES256Key& symm_key,
-                               const crypto::AES256InitialisationVector& symm_iv);
-crypto::CipherText EncryptAnpmid(const Fob<AnpmidTag>& anpmid, const crypto::AES256Key& symm_key,
-                                 const crypto::AES256InitialisationVector& symm_iv);
-crypto::CipherText EncryptPmid(const Fob<PmidTag>& pmid, const crypto::AES256Key& symm_key,
-                               const crypto::AES256InitialisationVector& symm_iv);
+crypto::CipherText EncryptMaid(const Fob<MaidTag>& maid,
+                               const crypto::AES256KeyAndIV& symm_key_and_iv);
+crypto::CipherText EncryptAnpmid(const Fob<AnpmidTag>& anpmid,
+                                 const crypto::AES256KeyAndIV& symm_key_and_iv);
+crypto::CipherText EncryptPmid(const Fob<PmidTag>& pmid,
+                               const crypto::AES256KeyAndIV& symm_key_and_iv);
 Fob<MaidTag> DecryptMaid(const crypto::CipherText& encrypted_maid,
-                         const crypto::AES256Key& symm_key,
-                         const crypto::AES256InitialisationVector& symm_iv);
+                         const crypto::AES256KeyAndIV& symm_key_and_iv);
 Fob<AnpmidTag> DecryptAnpmid(const crypto::CipherText& encrypted_anpmid,
-                             const crypto::AES256Key& symm_key,
-                             const crypto::AES256InitialisationVector& symm_iv);
+                             const crypto::AES256KeyAndIV& symm_key_and_iv);
 Fob<PmidTag> DecryptPmid(const crypto::CipherText& encrypted_pmid,
-                         const crypto::AES256Key& symm_key,
-                         const crypto::AES256InitialisationVector& symm_iv);
+                         const crypto::AES256KeyAndIV& symm_key_and_iv);
 
 #ifdef TESTING
 

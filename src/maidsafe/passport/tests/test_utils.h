@@ -50,7 +50,7 @@ testing::AssertionResult Equal(const detail::PublicFob<TagType>& lhs,
     return testing::AssertionFailure() << "One PublicFob is uninitialised.";
   if (!lhs.IsInitialised() && !rhs.IsInitialised())
     return testing::AssertionSuccess();
-  if (lhs.name() != rhs.name())
+  if (lhs.Name() != rhs.Name())
     return testing::AssertionFailure() << "Name mismatch.";
   if (!asymm::MatchingKeys(lhs.public_key(), rhs.public_key()))
     return testing::AssertionFailure() << "Public key mismatch.";
@@ -64,7 +64,7 @@ testing::AssertionResult Match(const detail::Fob<TagType>& fob,
                                const detail::PublicFob<TagType>& public_fob) {
   if (!public_fob.IsInitialised())
     return testing::AssertionFailure() << "PublicFob is uninitialised.";
-  if (fob.name().value != public_fob.name().value)
+  if (fob.name() != public_fob.Name())
     return testing::AssertionFailure() << "Name mismatch.";
   if (!asymm::MatchingKeys(fob.public_key(), public_fob.public_key()))
     return testing::AssertionFailure() << "Public key mismatch.";

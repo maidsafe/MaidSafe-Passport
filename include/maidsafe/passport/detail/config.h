@@ -19,9 +19,8 @@
 #ifndef MAIDSAFE_PASSPORT_DETAIL_CONFIG_H_
 #define MAIDSAFE_PASSPORT_DETAIL_CONFIG_H_
 
+#include <cstdint>
 #include <string>
-
-#include "maidsafe/common/data_types/data_type_values.h"
 
 namespace maidsafe {
 
@@ -29,12 +28,29 @@ namespace passport {
 
 namespace detail {
 
-using AnmaidTag = maidsafe::detail::Tag<DataTagValue::kAnmaidValue>;
-using MaidTag = maidsafe::detail::Tag<DataTagValue::kMaidValue>;
-using AnpmidTag = maidsafe::detail::Tag<DataTagValue::kAnpmidValue>;
-using PmidTag = maidsafe::detail::Tag<DataTagValue::kPmidValue>;
-using AnmpidTag = maidsafe::detail::Tag<DataTagValue::kAnmpidValue>;
-using MpidTag = maidsafe::detail::Tag<DataTagValue::kMpidValue>;
+struct AnmaidTag {
+  static const std::uint32_t type_id = 2;
+};
+
+struct MaidTag {
+  static const std::uint32_t type_id = 3;
+};
+
+struct AnpmidTag {
+  static const std::uint32_t type_id = 4;
+};
+
+struct PmidTag {
+  static const std::uint32_t type_id = 5;
+};
+
+struct AnmpidTag {
+  static const std::uint32_t type_id = 6;
+};
+
+struct MpidTag {
+  static const std::uint32_t type_id = 7;
+};
 
 template <typename TagType, class Enable = void>
 class Fob {};
@@ -62,13 +78,6 @@ template <>
 struct SignerFob<MpidTag> {
   using Tag = AnmpidTag;
 };
-
-#ifdef TESTING
-
-template <typename NameType>
-std::string DebugString(const NameType& name);
-
-#endif
 
 }  // namespace detail
 

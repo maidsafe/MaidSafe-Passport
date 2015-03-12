@@ -58,18 +58,16 @@ namespace passport {
 // for self-authenticated network identity' storage/retrieval on the network.
 
 // Functions for serialising/parsing identities.
-crypto::CipherText EncryptMaid(const Maid& maid, const crypto::AES256Key& symm_key,
-                               const crypto::AES256InitialisationVector& symm_iv);
-crypto::CipherText EncryptAnpmid(const Anpmid& anpmid, const crypto::AES256Key& symm_key,
-                                 const crypto::AES256InitialisationVector& symm_iv);
-crypto::CipherText EncryptPmid(const Pmid& pmid, const crypto::AES256Key& symm_key,
-                               const crypto::AES256InitialisationVector& symm_iv);
-Maid DecryptMaid(const crypto::CipherText& encrypted_maid, const crypto::AES256Key& symm_key,
-                 const crypto::AES256InitialisationVector& symm_iv);
-Anpmid DecryptAnpmid(const crypto::CipherText& encrypted_anpmid, const crypto::AES256Key& symm_key,
-                     const crypto::AES256InitialisationVector& symm_iv);
-Pmid DecryptPmid(const crypto::CipherText& encrypted_pmid, const crypto::AES256Key& symm_key,
-                 const crypto::AES256InitialisationVector& symm_iv);
+crypto::CipherText EncryptMaid(const Maid& maid, const crypto::AES256KeyAndIV& symm_key_and_iv);
+crypto::CipherText EncryptAnpmid(const Anpmid& anpmid,
+                                 const crypto::AES256KeyAndIV& symm_key_and_iv);
+crypto::CipherText EncryptPmid(const Pmid& pmid, const crypto::AES256KeyAndIV& symm_key_and_iv);
+Maid DecryptMaid(const crypto::CipherText& encrypted_maid,
+                 const crypto::AES256KeyAndIV& symm_key_and_iv);
+Anpmid DecryptAnpmid(const crypto::CipherText& encrypted_anpmid,
+                     const crypto::AES256KeyAndIV& symm_key_and_iv);
+Pmid DecryptPmid(const crypto::CipherText& encrypted_pmid,
+                 const crypto::AES256KeyAndIV& symm_key_and_iv);
 
 using MaidAndSigner = std::pair<Maid, Maid::Signer>;
 using PmidAndSigner = std::pair<Pmid, Pmid::Signer>;
@@ -123,10 +121,9 @@ class Passport {
   Passport(Passport&&) = delete;
   Passport& operator=(Passport) = delete;
 
-  void FromString(const NonEmptyString& serialised_passport, const crypto::AES256Key& symm_key,
-                  const crypto::AES256InitialisationVector& symm_iv);
-  NonEmptyString ToString(const crypto::AES256Key& symm_key,
-                          const crypto::AES256InitialisationVector& symm_iv) const;
+  void FromString(const NonEmptyString& serialised_passport,
+                  const crypto::AES256KeyAndIV& symm_key_and_iv);
+  NonEmptyString ToString(const crypto::AES256KeyAndIV& symm_key_and_iv) const;
 
   void Decrypt(const crypto::CipherText& encrypted_passport,
                const authentication::UserCredentials& user_credentials);

@@ -74,34 +74,32 @@ typename Key::Signer RemovePassportKeyAndSigner(
 
 }  // unnamed namespace
 
-crypto::CipherText EncryptMaid(const Maid& maid, const crypto::AES256Key& symm_key,
-                               const crypto::AES256InitialisationVector& symm_iv) {
-  return maid.Encrypt(symm_key, symm_iv);
+crypto::CipherText EncryptMaid(const Maid& maid, const crypto::AES256KeyAndIV& symm_key_and_iv) {
+  return maid.Encrypt(symm_key_and_iv);
 }
 
-crypto::CipherText EncryptAnpmid(const Anpmid& anpmid, const crypto::AES256Key& symm_key,
-                                 const crypto::AES256InitialisationVector& symm_iv) {
-  return anpmid.Encrypt(symm_key, symm_iv);
+crypto::CipherText EncryptAnpmid(const Anpmid& anpmid,
+                                 const crypto::AES256KeyAndIV& symm_key_and_iv) {
+  return anpmid.Encrypt(symm_key_and_iv);
 }
 
-crypto::CipherText EncryptPmid(const Pmid& pmid, const crypto::AES256Key& symm_key,
-                               const crypto::AES256InitialisationVector& symm_iv) {
-  return pmid.Encrypt(symm_key, symm_iv);
+crypto::CipherText EncryptPmid(const Pmid& pmid, const crypto::AES256KeyAndIV& symm_key_and_iv) {
+  return pmid.Encrypt(symm_key_and_iv);
 }
 
-Maid DecryptMaid(const crypto::CipherText& encrypted_maid, const crypto::AES256Key& symm_key,
-                 const crypto::AES256InitialisationVector& symm_iv) {
-  return Maid(encrypted_maid, symm_key, symm_iv);
+Maid DecryptMaid(const crypto::CipherText& encrypted_maid,
+                 const crypto::AES256KeyAndIV& symm_key_and_iv) {
+  return Maid(encrypted_maid, symm_key_and_iv);
 }
 
-Anpmid DecryptAnpmid(const crypto::CipherText& encrypted_anpmid, const crypto::AES256Key& symm_key,
-                     const crypto::AES256InitialisationVector& symm_iv) {
-  return Anpmid(encrypted_anpmid, symm_key, symm_iv);
+Anpmid DecryptAnpmid(const crypto::CipherText& encrypted_anpmid,
+                     const crypto::AES256KeyAndIV& symm_key_and_iv) {
+  return Anpmid(encrypted_anpmid, symm_key_and_iv);
 }
 
-Pmid DecryptPmid(const crypto::CipherText& encrypted_pmid, const crypto::AES256Key& symm_key,
-                 const crypto::AES256InitialisationVector& symm_iv) {
-  return Pmid(encrypted_pmid, symm_key, symm_iv);
+Pmid DecryptPmid(const crypto::CipherText& encrypted_pmid,
+                 const crypto::AES256KeyAndIV& symm_key_and_iv) {
+  return Pmid(encrypted_pmid, symm_key_and_iv);
 }
 
 MaidAndSigner CreateMaidAndSigner() {
@@ -129,77 +127,70 @@ Passport::Passport(const crypto::CipherText& encrypted_passport,
                    const authentication::UserCredentials& user_credentials)
     : maid_and_signer_(), pmids_and_signers_(), mpids_and_signers_(), mutex_() {
   crypto::SecurePassword secure_password(authentication::CreateSecurePassword(user_credentials));
-  crypto::AES256Key symm_key(authentication::DeriveSymmEncryptKey(secure_password));
-  crypto::AES256InitialisationVector symm_iv(authentication::DeriveSymmEncryptIv(secure_password));
-  FromString(authentication::Obfuscate(user_credentials,
-                                       crypto::SymmDecrypt(encrypted_passport, symm_key, symm_iv)),
-             symm_key, symm_iv);
+  FromString(authentication::Obfuscate(
+                 user_credentials, crypto::SymmDecrypt(encrypted_passport, secure_password.data)),
+             secure_password.data);
 }
 
 void Passport::FromString(const NonEmptyString& serialised_passport,
-                          const crypto::AES256Key& symm_key,
-                          const crypto::AES256InitialisationVector& symm_iv) {
+                          const crypto::AES256KeyAndIV& symm_key_and_iv) {
   try {
-    std::string contents(serialised_passport.string());
-    InputVectorStream binary_input_stream(SerialisedData(contents.begin(), contents.end()));
+    InputVectorStream binary_input_stream(serialised_passport.string());
     std::lock_guard<std::mutex> lock(mutex_);
     crypto::CipherText encrypted_fob(Parse<crypto::CipherText>(binary_input_stream));
     crypto::CipherText encrypted_signer(Parse<crypto::CipherText>(binary_input_stream));
     maid_and_signer_ = maidsafe::make_unique<MaidAndSigner>(
-        std::make_pair(Maid(std::move(encrypted_fob), symm_key, symm_iv),
-                       Anmaid(std::move(encrypted_signer), symm_key, symm_iv)));
+        std::make_pair(Maid(std::move(encrypted_fob), symm_key_and_iv),
+                       Anmaid(std::move(encrypted_signer), symm_key_and_iv)));
     std::uint32_t pmids_and_signers_size(Parse<std::uint32_t>(binary_input_stream));
     std::uint32_t mpids_and_signers_size(Parse<std::uint32_t>(binary_input_stream));
     for (std::uint32_t i = 0; i < pmids_and_signers_size; ++i) {
       encrypted_fob = Parse<crypto::CipherText>(binary_input_stream);
       encrypted_signer = Parse<crypto::CipherText>(binary_input_stream);
       pmids_and_signers_.push_back(
-          std::make_pair(Pmid(std::move(encrypted_fob), symm_key, symm_iv),
-                         Anpmid(std::move(encrypted_signer), symm_key, symm_iv)));
+          std::make_pair(Pmid(std::move(encrypted_fob), symm_key_and_iv),
+                         Anpmid(std::move(encrypted_signer), symm_key_and_iv)));
     }
     for (std::uint32_t i = 0; i < mpids_and_signers_size; ++i) {
       encrypted_fob = Parse<crypto::CipherText>(binary_input_stream);
       encrypted_signer = Parse<crypto::CipherText>(binary_input_stream);
       mpids_and_signers_.push_back(
-          std::make_pair(Mpid(std::move(encrypted_fob), symm_key, symm_iv),
-                         Anmpid(std::move(encrypted_signer), symm_key, symm_iv)));
+          std::make_pair(Mpid(std::move(encrypted_fob), symm_key_and_iv),
+                         Anmpid(std::move(encrypted_signer), symm_key_and_iv)));
     }
   } catch (const std::exception&) {
     BOOST_THROW_EXCEPTION(MakeError(CommonErrors::parsing_error));
   }
 }
 
-NonEmptyString Passport::ToString(const crypto::AES256Key& symm_key,
-                                  const crypto::AES256InitialisationVector& symm_iv) const {
+NonEmptyString Passport::ToString(const crypto::AES256KeyAndIV& symm_key_and_iv) const {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!maid_and_signer_) {
     LOG(kError) << "Passport must contain a Maid in order to be serialised.";
     BOOST_THROW_EXCEPTION(MakeError(CommonErrors::serialisation_error));
   }
   OutputVectorStream binary_output_stream;
-  Serialise(binary_output_stream, maid_and_signer_->first.Encrypt(symm_key, symm_iv)->string(),
-            maid_and_signer_->second.Encrypt(symm_key, symm_iv)->string(),
+  Serialise(binary_output_stream, maid_and_signer_->first.Encrypt(symm_key_and_iv)->string(),
+            maid_and_signer_->second.Encrypt(symm_key_and_iv)->string(),
             static_cast<std::uint32_t>(pmids_and_signers_.size()),
             static_cast<std::uint32_t>(mpids_and_signers_.size()));
   for (const auto& pmid_and_signer : pmids_and_signers_) {
-    Serialise(binary_output_stream, pmid_and_signer.first.Encrypt(symm_key, symm_iv),
-              pmid_and_signer.second.Encrypt(symm_key, symm_iv));
+    Serialise(binary_output_stream, pmid_and_signer.first.Encrypt(symm_key_and_iv),
+              pmid_and_signer.second.Encrypt(symm_key_and_iv));
   }
   for (const auto& mpid_and_signer : mpids_and_signers_) {
-    Serialise(binary_output_stream, mpid_and_signer.first.Encrypt(symm_key, symm_iv),
-              mpid_and_signer.second.Encrypt(symm_key, symm_iv));
+    Serialise(binary_output_stream, mpid_and_signer.first.Encrypt(symm_key_and_iv),
+              mpid_and_signer.second.Encrypt(symm_key_and_iv));
   }
-  SerialisedData contents(binary_output_stream.vector());
-  return NonEmptyString(std::string(contents.begin(), contents.end()));
+  return NonEmptyString(binary_output_stream.vector());
 }
 
 crypto::CipherText Passport::Encrypt(
     const authentication::UserCredentials& user_credentials) const {
   crypto::SecurePassword secure_password(authentication::CreateSecurePassword(user_credentials));
-  crypto::AES256Key symm_key(authentication::DeriveSymmEncryptKey(secure_password));
-  crypto::AES256InitialisationVector symm_iv(authentication::DeriveSymmEncryptIv(secure_password));
   return crypto::SymmEncrypt(
-      authentication::Obfuscate(user_credentials, ToString(symm_key, symm_iv)), symm_key, symm_iv);
+      authentication::Obfuscate(user_credentials, ToString(secure_password.data)),
+      secure_password.data);
 }
 
 Maid Passport::GetMaid() const {

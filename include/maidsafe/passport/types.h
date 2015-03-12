@@ -19,6 +19,8 @@
 #ifndef MAIDSAFE_PASSPORT_TYPES_H_
 #define MAIDSAFE_PASSPORT_TYPES_H_
 
+#include "cereal/types/polymorphic.hpp"
+
 #include "maidsafe/common/tagged_value.h"
 #include "maidsafe/common/types.h"
 
@@ -100,5 +102,12 @@ template <>
 struct is_short_term_cacheable<passport::PublicMpid> : public std::true_type {};
 
 }  // namespace maidsafe
+
+CEREAL_REGISTER_TYPE(maidsafe::passport::PublicAnmaid)
+CEREAL_REGISTER_TYPE(maidsafe::passport::PublicMaid)
+CEREAL_REGISTER_TYPE(maidsafe::passport::PublicAnpmid)
+CEREAL_REGISTER_TYPE(maidsafe::passport::PublicPmid)
+CEREAL_REGISTER_TYPE(maidsafe::passport::PublicAnmpid)
+CEREAL_REGISTER_TYPE(maidsafe::passport::PublicMpid)
 
 #endif  // MAIDSAFE_PASSPORT_TYPES_H_

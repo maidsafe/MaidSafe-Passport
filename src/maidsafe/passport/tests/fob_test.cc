@@ -90,38 +90,36 @@ TYPED_TEST(FobTest, BEH_EncryptAndDecrypt) {
   typename TestFixture::Fob fob(CreateFob<TypeParam>());
 
   // Valid encryption and decryption
-  crypto::AES256Key symm_key(RandomString(crypto::AES256_KeySize));
-  crypto::AES256InitialisationVector symm_iv(RandomString(crypto::AES256_IVSize));
-  crypto::CipherText encrypted_fob(fob.Encrypt(symm_key, symm_iv));
-  typename TestFixture::Fob decrypted_fob(encrypted_fob, symm_key, symm_iv);
+  crypto::AES256KeyAndIV symm_key_and_iv(
+      RandomBytes(crypto::AES256_KeySize + crypto::AES256_IVSize));
+  crypto::CipherText encrypted_fob(fob.Encrypt(symm_key_and_iv));
+  typename TestFixture::Fob decrypted_fob(encrypted_fob, symm_key_and_iv);
   EXPECT_TRUE(Equal(fob, decrypted_fob));
 
   // Modfiy encrypted data and try to decrypt
   std::size_t index(RandomUint32() % encrypted_fob->string().size());
-  std::string invalid_encrypted_fob(encrypted_fob->string());
+  auto invalid_encrypted_fob(encrypted_fob->string());
   invalid_encrypted_fob[index] = (invalid_encrypted_fob[index] == 'a' ? 'b' : 'a');
   EXPECT_THROW(typename TestFixture::Fob(crypto::CipherText(NonEmptyString(invalid_encrypted_fob)),
-                                         symm_key, symm_iv),
+                                         symm_key_and_iv),
                common_error);
 
   // Check decrypting with wrong AES key/IV
-  index = RandomUint32() % symm_key.string().size();
-  std::string invalid_symm_key(symm_key.string());
+  index = RandomUint32() % crypto::AES256_KeySize;
+  auto invalid_symm_key(symm_key_and_iv.string());
   invalid_symm_key[index] = (invalid_symm_key[index] == 'a' ? 'b' : 'a');
-  index = RandomUint32() % symm_iv.string().size();
-  std::string invalid_symm_iv(symm_iv.string());
+  index = (RandomUint32() % crypto::AES256_IVSize) + crypto::AES256_KeySize;
+  auto invalid_symm_iv(symm_key_and_iv.string());
   invalid_symm_iv[index] = (invalid_symm_iv[index] == 'a' ? 'b' : 'a');
-  EXPECT_THROW(
-      typename TestFixture::Fob(encrypted_fob, crypto::AES256Key(invalid_symm_key), symm_iv),
-      common_error);
-  EXPECT_THROW(typename TestFixture::Fob(encrypted_fob, symm_key,
-                                         crypto::AES256InitialisationVector(invalid_symm_iv)),
+  EXPECT_THROW(typename TestFixture::Fob(encrypted_fob, crypto::AES256KeyAndIV(invalid_symm_key)),
+               common_error);
+  EXPECT_THROW(typename TestFixture::Fob(encrypted_fob, crypto::AES256KeyAndIV(invalid_symm_iv)),
                common_error);
 
   // Check decrypting from wrong type
   typename TestFixture::WrongFob wrong_fob(CreateFob<typename TestFixture::WrongTagType>());
-  encrypted_fob = wrong_fob.Encrypt(symm_key, symm_iv);
-  EXPECT_THROW(typename TestFixture::Fob(encrypted_fob, symm_key, symm_iv), common_error);
+  encrypted_fob = wrong_fob.Encrypt(symm_key_and_iv);
+  EXPECT_THROW(typename TestFixture::Fob(encrypted_fob, symm_key_and_iv), common_error);
 }
 
 }  // namespace test
